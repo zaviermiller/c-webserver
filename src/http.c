@@ -53,6 +53,7 @@ char *human_readable_status(int status) {
   switch(status) {
     case HTTP_OK: return "OK";
     case HTTP_NOT_FOUND: return "NOT FOUND";
+    case HTTP_SERVER_ERR: return "INTERNAL SERVER ERROR";
     default: return "INVALID STATUS";
   }
 }

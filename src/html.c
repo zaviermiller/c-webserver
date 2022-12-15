@@ -6,6 +6,7 @@ char *display_status(int status) {
   switch(status) {
     case HTTP_OK: return "Ok";
     case HTTP_NOT_FOUND: return "Not Found";
+    case HTTP_SERVER_ERR: return "Internal Server Error";
     default: return "Unknown Status";
   }
 }

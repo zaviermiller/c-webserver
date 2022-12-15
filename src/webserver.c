@@ -1,3 +1,4 @@
+#include <asm-generic/socket.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -49,10 +50,22 @@ int create_daemon(int socket_fd) {
   exit(0);
 }
 
+// needs to be able to handle bigger files
 char *get_file_contents(char* path) {
   FILE *f = fopen(path, "r");
-  char *res = malloc(1000);
-  fread(res, 1, 1000, f);
+  char *res = NULL;
+  int res_len = 0;
+  while (!feof(f)) {
+    char *tmp = realloc(res, 1000);
+    if (!tmp) {
+      free(res);
+      return NULL;
+    } else {
+      res = tmp;
+    }
+    fread(res + res_len, 1000, 1, f);
+    res_len += 1000;
+  }
   fclose(f);
 
   return res;
@@ -71,7 +84,10 @@ int render_file_mw(HttpRequest req, HttpResponse res) {
     return 1;
   }
 
-  stat(relative_path, &path_stat);
+  if (stat(relative_path, &path_stat) != 0) {
+    res->status = HTTP_SERVER_ERR;
+    return 1;
+  }
 
   if (S_ISDIR(path_stat.st_mode)) {
     // look for index html
@@ -101,6 +117,11 @@ int render_file_mw(HttpRequest req, HttpResponse res) {
     res->body = get_file_contents(relative_path);
   }
 
+  if (res->body == NULL) {
+    res->status = 500;
+    return 1;
+  }
+
   return 0;
 }
 
@@ -109,7 +130,7 @@ int validate_root_dir(char *root_dir) {
 
   if (access(root_dir, F_OK) != 0) return 0;
 
-  stat(root_dir, &s);
+  if (stat(root_dir, &s) != 0) return 1;
 
   if (!S_ISDIR(s.st_mode)) return 0;
 
@@ -119,6 +140,7 @@ int validate_root_dir(char *root_dir) {
 int main(int argc, char **argv) {
   int port, socket, socket_fd;
   char hostname[15] = "0.0.0.0";
+  int reuse = 1;
 
   if (argc < 2) {
     fprintf(stderr, "usage: %s port [root dir]\n", argv[0]);
@@ -144,6 +166,9 @@ int main(int argc, char **argv) {
   register_middleware(render_file_mw);
 
   socket = serve_socket(hostname, port);
+  setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+  setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+
   printf("Listening at %s:%d\n", hostname, port);
 
   while (1) {

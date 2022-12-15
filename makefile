@@ -5,18 +5,30 @@ BIN = bin/webserver
 
 CFLAGS = -O3 -Iinclude
 
-all: $(BIN)
+all: $(BIN) $(LIBS)
 .PHONY: all
 
 debug: CFLAGS += -g
 debug: clean all
 
 clean:
-	rm -f obj/* bin/* .core*
+	rm -f obj/* bin/* .core* lib/*
 .PHONY: clean
+
+lib/libfdr.a: obj/dllist.o obj/jval.o obj/jrb.o obj/fields.o
+	ar ru $@ $^
+	ranlib $@
+
+lib/socket.a: obj/socket.o
+	ar ru $@ $<
+	ranlib $@
 
 bin/%: src/%.c $(LIBS) $(OBJS)
 	gcc $(CFLAGS) -o $@ $< $(OBJS) $(LIBS)
 
 obj/%.o: src/%.c
+	gcc $(CFLAGS) -c -o $@ $<
+
+
+obj/%.o: src/deps/%.c
 	gcc $(CFLAGS) -c -o $@ $<
