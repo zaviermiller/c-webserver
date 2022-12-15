@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <time.h>
+#include <malloc.h>
 
 #define SERVER_NAME "ZServer"
 
@@ -57,7 +58,7 @@ char *human_readable_status(int status) {
 }
 
 char *get_date_str() {
-  char *date = malloc(1000);
+  char *date = malloc(100);
   time_t raw_time;
   struct tm *info;
 
@@ -65,14 +66,13 @@ char *get_date_str() {
 
   info = gmtime(&raw_time);
 
-  strftime(date, 1000, "%c", info);
+  strftime(date, 100, "%c", info);
 
   return date;
 }
 
 char *get_header_str(HttpResponse res) {
-  char *header_str = calloc(1000, 0), *header_key, *header_val;
-  char single_header[1000];
+  char *header_str = malloc(1000), *header_key, *header_val;
   int header_len = 0;
   int alloced_size = 1000;
   JRB ptr;
@@ -95,7 +95,6 @@ char *get_header_str(HttpResponse res) {
 }
 
 char *stringify_response(HttpResponse res) {
-  char *res_str = malloc(1000);
   char *date_str = get_date_str();
 
   int body_len = strlen(res->body);
@@ -104,10 +103,11 @@ char *stringify_response(HttpResponse res) {
   add_header_to_response(res, "Content-Length", body_len_str);
   char *header_str = get_header_str(res);
 
-
+  char *res_str = malloc(strlen(header_str) + strlen(date_str) + body_len);
   sprintf(res_str, "HTTP/%s %d %s\nDate: %s\n", res->version, res->status, human_readable_status(res->status), date_str);
   strcat(res_str, header_str);
   sprintf(res_str + strlen(res_str), "\n%s", res->body);
+
 
   free(date_str);
   free(header_str);
@@ -124,10 +124,7 @@ HttpRequest read_request(int socket_fd) {
 }
 
 void send_response(int socket_fd, HttpResponse res) {
-
   char *res_string = stringify_response(res);
-
-  printf("response:\n%s\n\n", res_string);
 
   write(socket_fd, res_string, strlen(res_string) + 1);
 

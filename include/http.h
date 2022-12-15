@@ -25,3 +25,6 @@ void send_response(int socket_fd, HttpResponse res);
 HttpRequest read_request(int socket_fd);
 void add_header_to_response(HttpResponse res, char *header, char *value);
 void render_html_error(HttpResponse res);
+
+void free_response(HttpResponse res);
+void free_request(HttpRequest req);

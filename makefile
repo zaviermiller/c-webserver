@@ -1,6 +1,6 @@
 LIBS = lib/socket.a lib/libfdr.a
 INCLUDES = include/middleware.h
-OBJS = obj/middleware.o obj/http.o obj/html.o
+OBJS = obj/middleware.o obj/http.o obj/html.o obj/config.o
 BIN = bin/webserver
 
 CFLAGS = -O3 -Iinclude
