@@ -7,11 +7,13 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
+#include <dirent.h>
 #include "socket.h"
 #include "dllist.h"
 #include "middleware.h"
 #include "http.h"
 #include "config.h"
+#include "html.h"
 
 config_t config;
 
@@ -56,18 +58,53 @@ char *get_file_contents(char* path) {
   char *res = NULL;
   int res_len = 0;
   while (!feof(f)) {
-    char *tmp = realloc(res, 1000);
+    char *tmp = realloc(res, 10000);
     if (!tmp) {
       free(res);
       return NULL;
     } else {
       res = tmp;
     }
-    fread(res + res_len, 1000, 1, f);
-    res_len += 1000;
+    fread(res + res_len, 10000, 1, f);
+    res_len += 10000;
   }
   fclose(f);
 
+  return res;
+}
+
+char *build_dir_page(char *path, char *relative_path) {
+  // pretty simple, just need to create a header with the url, and then links to each page in it
+  DIR *d;
+  struct dirent *de;
+  char *a_tag;
+  char a_href[strlen(path) + 1000];
+  d = opendir(relative_path);
+
+  char header_str[10 + strlen(path)];
+  sprintf(header_str, "Index of %s", path);
+  char *res = malloc(10000);
+  int offset = 0;
+  char *h1 = build_h1(header_str);
+  sprintf(res, "%s\n", h1);
+  free(h1);
+
+  if (d) {
+    while ((de = readdir(d)) != NULL) {
+      if (strncmp(de->d_name, ".", 1) != 0 && strncmp(de->d_name, "..", 2) != 0) {
+        strcpy(a_href, path);
+        if (path[strlen(path) - 1] != '/') {
+          strcat(a_href, "/");
+        }
+
+        strcat(a_href, de->d_name);
+        a_tag = build_a(de->d_name, a_href);
+        sprintf(res + strlen(res), "%s<br />\n", a_tag);
+        free(a_tag);
+      }
+    }
+  }
+  
   return res;
 }
 
@@ -104,12 +141,11 @@ int render_file_mw(HttpRequest req, HttpResponse res) {
     // stat to get info
     if (access(index_path, F_OK) != 0) {
       // render dir for now just return 404
-      res->status = 404;
-      return 1;
+      res->body = build_dir_page(req->path, relative_path);
+    } else {
+      // render index
+      res->body = get_file_contents(index_path);
     }
-
-    // render index
-    res->body = get_file_contents(index_path);
 
   } else if (S_ISREG(path_stat.st_mode)) {
     // open the file, read its contents and put into body
@@ -121,6 +157,39 @@ int render_file_mw(HttpRequest req, HttpResponse res) {
     res->status = 500;
     return 1;
   }
+
+  return 0;
+}
+
+char *get_extension(char *path) {
+  char *ext = strrchr(path, '.');
+  if (ext) return ext + 1;
+  return NULL;
+}
+
+int is_dir(char *path) {
+  char relative_path[strlen(path) + 5];
+  struct stat s;
+  strcpy(relative_path, ".");
+  strcat(relative_path, path);
+
+  if (stat(relative_path, &s) != 0) return 0;
+
+  if (S_ISDIR(s.st_mode)) return 1;
+
+  return 0;
+}
+
+int wrap_pre_mw(HttpRequest req, HttpResponse res) {
+  char *ext = get_extension(req->path);
+
+  if (ext == NULL) return 0;
+  if (strncmp(ext, "html", 4) == 0) return 0;
+
+  char *tmp = malloc(strlen(res->body) + 100);
+  sprintf(tmp, "<pre style=\"word-wrap: break-word; white-space: pre-wrap;\">\n%s\n</pre>", res->body);
+  free(res->body);
+  res->body = tmp;
 
   return 0;
 }
@@ -164,6 +233,7 @@ int main(int argc, char **argv) {
   
   // register middlewares here
   register_middleware(render_file_mw);
+  register_middleware(wrap_pre_mw);
 
   socket = serve_socket(hostname, port);
   setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
