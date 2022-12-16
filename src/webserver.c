@@ -1,5 +1,3 @@
-#include <asm-generic/socket.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -14,6 +12,7 @@
 #include "http.h"
 #include "config.h"
 #include "html.h"
+#include "util.h"
 
 config_t config;
 
@@ -34,43 +33,13 @@ int create_daemon(int socket_fd) {
     default: _exit(EXIT_SUCCESS);
   }
 
-  HttpRequest req = read_request(socket_fd);
-  HttpResponse res = build_response(req->version);
-  res->status = HTTP_OK;
-
-  // apply middlewares
-  apply_middlewares(req, res);
-
-  send_response(socket_fd, res);
-
-  free_response(res);
-  free_request(req);
+  // handle http response
+  handle_http(socket_fd);
 
   // shut down process and close connection
   shutdown(socket_fd, SHUT_RDWR);
   close(socket_fd);
   exit(0);
-}
-
-// needs to be able to handle bigger files
-char *get_file_contents(char* path) {
-  FILE *f = fopen(path, "r");
-  char *res = NULL;
-  int res_len = 0;
-  while (!feof(f)) {
-    char *tmp = realloc(res, 10000);
-    if (!tmp) {
-      free(res);
-      return NULL;
-    } else {
-      res = tmp;
-    }
-    fread(res + res_len, 10000, 1, f);
-    res_len += 10000;
-  }
-  fclose(f);
-
-  return res;
 }
 
 char *build_dir_page(char *path, char *relative_path) {
@@ -154,28 +123,9 @@ int render_file_mw(HttpRequest req, HttpResponse res) {
   }
 
   if (res->body == NULL) {
-    res->status = 500;
+    res->status = HTTP_SERVER_ERR;
     return 1;
   }
-
-  return 0;
-}
-
-char *get_extension(char *path) {
-  char *ext = strrchr(path, '.');
-  if (ext) return ext + 1;
-  return NULL;
-}
-
-int is_dir(char *path) {
-  char relative_path[strlen(path) + 5];
-  struct stat s;
-  strcpy(relative_path, ".");
-  strcat(relative_path, path);
-
-  if (stat(relative_path, &s) != 0) return 0;
-
-  if (S_ISDIR(s.st_mode)) return 1;
 
   return 0;
 }
@@ -183,8 +133,8 @@ int is_dir(char *path) {
 int wrap_pre_mw(HttpRequest req, HttpResponse res) {
   char *ext = get_extension(req->path);
 
-  if (ext == NULL) return 0;
-  if (strncmp(ext, "html", 4) == 0) return 0;
+  if (is_dir(req->path)) return 0;
+  if (ext != NULL && strncmp(ext, "html", 4) == 0) return 0;
 
   char *tmp = malloc(strlen(res->body) + 100);
   sprintf(tmp, "<pre style=\"word-wrap: break-word; white-space: pre-wrap;\">\n%s\n</pre>", res->body);
@@ -194,17 +144,19 @@ int wrap_pre_mw(HttpRequest req, HttpResponse res) {
   return 0;
 }
 
-int validate_root_dir(char *root_dir) {
-  struct stat s;
+int escape_html_mw(HttpRequest req, HttpResponse res) {
+  char *ext = get_extension(req->path);
 
-  if (access(root_dir, F_OK) != 0) return 0;
+  if (ext == NULL) return 0;
+  if (strncmp(ext, "html", 4) == 0) return 0;
+  
+  char *tmp = escape_html(res->body);
+  free(res->body);
+  res->body = tmp;
 
-  if (stat(root_dir, &s) != 0) return 1;
-
-  if (!S_ISDIR(s.st_mode)) return 0;
-
-  return 1;
+  return 0;
 }
+
 
 int main(int argc, char **argv) {
   int port, socket, socket_fd;
@@ -217,7 +169,7 @@ int main(int argc, char **argv) {
   }
 
   if (argc == 3) {
-    if (!validate_root_dir(argv[2])) {
+    if (!dir_exists(argv[2])) {
       fprintf(stderr, "%s: invalid root dir\n", argv[0]);
       return 1;
     }
@@ -233,6 +185,7 @@ int main(int argc, char **argv) {
   
   // register middlewares here
   register_middleware(render_file_mw);
+  // register_middleware(escape_html_mw);
   register_middleware(wrap_pre_mw);
 
   socket = serve_socket(hostname, port);

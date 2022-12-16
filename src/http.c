@@ -1,6 +1,7 @@
 #include "http.h"
 #include "jrb.h"
 #include "string.h"
+#include "middleware.h"
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -25,6 +26,7 @@ HttpResponse build_response(char *http_version) {
 
 void free_response(HttpResponse res) {
   free(res->version);
+  free(res->body);
   free(res);
 }
 
@@ -143,3 +145,18 @@ void add_header_to_response(HttpResponse res, char *header, char *value) {
   }
 }
 
+
+int handle_http(int fd) {
+  HttpRequest req = read_request(fd);
+  HttpResponse res = build_response(req->version);
+  res->status = HTTP_OK;
+
+  // apply middlewares
+  apply_middlewares(req, res);
+
+  send_response(fd, res);
+
+  free_response(res);
+  free_request(req);
+  return 0;
+}

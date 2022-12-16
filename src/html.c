@@ -31,3 +31,24 @@ char *build_a(char *text, char *href) {
   sprintf(res, "<a href=\"%s\">%s</a>", href, text);
   return res;
 }
+
+char *escape_html(char *text) {
+  char *res = malloc(strlen(text) + 1000);
+  char *working = malloc(strlen(text) + 1000);
+  strcpy(res, text);
+  char *start, *end;
+  for (int i = 0; i < strlen(res); i++) {
+    switch(res[i]) {
+      case '<':
+        start = res + i - 1;
+        end = res + i+1;
+        sprintf(working, "%s&lt;%s", start, end);
+        res = working;
+        printf("%s\n", res);
+        return res;
+      default: continue;
+    }
+  }
+
+  return res;
+}

@@ -19,6 +19,7 @@ typedef struct http_response {
   char *body;
 } *HttpResponse;
 
+int handle_http(int fd);
 
 HttpResponse build_response(char *http_version);
 void send_response(int socket_fd, HttpResponse res);
