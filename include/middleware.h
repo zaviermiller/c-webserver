@@ -8,5 +8,5 @@ extern Dllist middlewares;
 typedef int (*HttpMiddleware)(HttpRequest req, HttpResponse res);
 
 void register_middleware(HttpMiddleware mw);
-void apply_middlewares(HttpRequest req, HttpResponse res);
+int apply_middlewares(HttpRequest req, HttpResponse res);
 

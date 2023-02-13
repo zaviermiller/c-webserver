@@ -14,11 +14,27 @@
 #include "middleware.h"
 #include "middlewares.h"
 #include "socket.h"
-#include "status.h"
 #include "util.h"
 
 
 config_t config;
+
+char *handle_request(char *http_req_str) {
+  HttpRequest req = parse_http_request(http_req_str);
+  HttpResponse res = build_http_response_struct(req);
+
+  // run middlewares
+  if (apply_middlewares(req, res) != 0) {
+    // render error page
+  }
+
+  char *result = build_http_response_string(res);
+
+  free_response(res);
+  free_request(req);
+
+  return result;
+}
 
 int create_daemon(int socket_fd) {
   switch (fork()) {
@@ -46,28 +62,17 @@ int create_daemon(int socket_fd) {
   // read in request from fd
   // parse, run middlewares, send
   char *http_req_str = readall(socket_fd);
-  if (http_req_str == NULL) {
+  if (http_req_str == 0) {
     // return error
   }
 
-  HttpRequest req = parse_http_request(http_req_str);
-  HttpResponse res = build_http_response_struct(req);
-
-  // run middlewares
-  if (apply_middlewares(req, res) != 0) {
-    // render error page
-    render_html_error(res);
-  }
-
-
-  char *result = build_http_response_string(res);
+  char *result = handle_request(http_req_str);
   int res_size = strlen(result);
 
   write(socket_fd, result, res_size);
-  free(http_req_str);
+
   free(result);
-  free_request(req);
-  free_response(res);
+  free(http_req_str);
 
 
   // shut down process and close connection
@@ -77,7 +82,7 @@ int create_daemon(int socket_fd) {
 }
 
 int main(int argc, char **argv) {
-  int port, socket, socket_fd;
+  int port, socket;
   char hostname[15] = "0.0.0.0";
   int reuse = 1;
 
@@ -108,19 +113,39 @@ int main(int argc, char **argv) {
   register_middleware(wrap_pre_mw);
 
   socket = serve_socket(hostname, port);
-  setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-  setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
+  // setsockopt(socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+  // setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &reuse, sizeof(reuse));
 
   printf("Listening at %s:%d\n", hostname, port);
 
   while (1) {
-    socket_fd = accept_connection(socket);
+    int socket_fd = accept_connection(socket);
 
-    if (create_daemon(socket_fd) != 0) {
-      perror("create_daemon");
-      exit(1);
+    // read in request from fd
+    // parse, run middlewares, send
+    char *http_req_str = readall(socket_fd);
+    if (http_req_str == 0) {
+      // return error
     }
+
+    char *result = handle_request(http_req_str);
+    if (result == NULL) {
+      return 1;
+    }
+    int res_size = strlen(result);
+
+    write(socket_fd, result, res_size + 1);
+
+    free(http_req_str);
+    free(result);
+
+
+    // shut down process and close connection
+    shutdown(socket_fd, SHUT_RDWR);
+    close(socket_fd);
   }
+
+  free_dllist(middlewares);
 
   return 0;
 }

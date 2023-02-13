@@ -40,7 +40,7 @@ int serve_socket(char *hn, int port) {
 }
 
 int accept_connection(int s) {
-  int l;
+  unsigned int l;
   struct sockaddr_in sn;
   int x;
 
